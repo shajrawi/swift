@@ -403,6 +403,7 @@ class SILPrinter : public SILVisitor<SILPrinter> {
   }
   SIMPLE_PRINTER(char)
   SIMPLE_PRINTER(unsigned)
+  SIMPLE_PRINTER(uint64_t)
   SIMPLE_PRINTER(StringRef)
   SIMPLE_PRINTER(Identifier)
   SIMPLE_PRINTER(ID)
@@ -1627,6 +1628,10 @@ public:
     printBranchArgs(CBI->getTrueArgs());
     *this << ", " << getID(CBI->getFalseBB());
     printBranchArgs(CBI->getFalseArgs());
+    if (CBI->getTrueBBCount())
+      *this << " !true_count(" << CBI->getTrueBBCount().getValue() << ")";
+    if (CBI->getFalseBBCount())
+      *this << " !false_count(" << CBI->getFalseBBCount().getValue() << ")";
   }
 };
 } // end anonymous namespace

@@ -79,7 +79,7 @@ ProfilerRAII::ProfilerRAII(SILGenModule &SGM, Decl *D)
   assert(isa<AbstractFunctionDecl>(D) ||
          isa<TopLevelCodeDecl>(D) && "Cannot create profiler for this decl");
   const auto &Opts = SGM.M.getOptions();
-  if (!Opts.GenerateProfile || isUnmappedDecl(D))
+  if ((!Opts.GenerateProfile && Opts.UseProfile.empty()) || isUnmappedDecl(D))
     return;
   SGM.Profiler =
       llvm::make_unique<SILGenProfiling>(SGM, Opts.EmitProfileCoverageMapping);
@@ -101,6 +101,18 @@ struct MapRegionCounters : public ASTWalker {
   MapRegionCounters(llvm::DenseMap<ASTNode, unsigned> &CounterMap)
       : NextCounter(0), CounterMap(CounterMap) {}
 
+  unsigned getParentCounter() const {
+    if (Parent.isNull())
+      return 0;
+    else if (Parent.getKind() == ASTWalker::ParentKind::Decl)
+      return CounterMap[Parent.getAsDecl()];
+    else if (Parent.getKind() == ASTWalker::ParentKind::Stmt)
+      return CounterMap[Parent.getAsStmt()];
+    else if (Parent.getKind() == ASTWalker::ParentKind::Expr)
+      return CounterMap[Parent.getAsExpr()];
+    return 0;
+  }
+
   bool walkToDeclPre(Decl *D) override {
     if (isUnmappedDecl(D))
       return false;
@@ -114,6 +126,11 @@ struct MapRegionCounters : public ASTWalker {
   std::pair<bool, Stmt *> walkToStmtPre(Stmt *S) override {
     if (auto *IS = dyn_cast<IfStmt>(S)) {
       CounterMap[IS->getThenStmt()] = NextCounter++;
+
+      // XXX/Hack: Map the else stmt to the parent's counter.
+      if (IS->getElseStmt())
+        CounterMap[IS->getElseStmt()] = getParentCounter();
+
     } else if (auto *US = dyn_cast<GuardStmt>(S)) {
       CounterMap[US->getBody()] = NextCounter++;
     } else if (auto *WS = dyn_cast<WhileStmt>(S)) {
@@ -138,10 +155,16 @@ struct MapRegionCounters : public ASTWalker {
   }
 
   std::pair<bool, Expr *> walkToExprPre(Expr *E) override {
-    if (auto *IE = dyn_cast<IfExpr>(E))
+    if (auto *IE = dyn_cast<IfExpr>(E)) {
       CounterMap[IE->getThenExpr()] = NextCounter++;
-    else if (isa<AutoClosureExpr>(E) || isa<ClosureExpr>(E))
+
+      // XXX/Hack: Map the else expr to the parent's counter.
+      if (IE->getElseExpr())
+        CounterMap[IE->getElseExpr()] = getParentCounter();
+
+    } else if (isa<AutoClosureExpr>(E) || isa<ClosureExpr>(E)) {
       CounterMap[E] = NextCounter++;
+    }
     return {true, E};
   }
 };
@@ -680,14 +703,7 @@ public:
 
 SILGenProfiling::SILGenProfiling(SILGenModule &SGM, bool EmitCoverageMapping)
     : SGM(SGM), EmitCoverageMapping(EmitCoverageMapping), NumRegionCounters(0),
-      FunctionHash(0), LoadedCounts(std::error_code()) {
-  if (!SGM.PGOReader)
-    return;
-
-  // FIXME: We need some kind of error tracking mechanism here, like clang's
-  // PGOStats tracker.
-  LoadedCounts = SGM.PGOReader->getInstrProfRecord(PGOFuncName, FunctionHash);
-}
+      FunctionHash(0), LoadedCounts(std::error_code()) {}
 
 static llvm::GlobalValue::LinkageTypes
 getEquivalentPGOLinkage(FormalLinkage Linkage) {
@@ -730,6 +746,12 @@ void SILGenProfiling::assignRegionCounters(Decl *Root) {
   NumRegionCounters = Mapper.NextCounter;
   // TODO: Mapper needs to calculate a function hash as it goes.
   FunctionHash = 0x0;
+
+  if (SGM.PGOReader) {
+    // FIXME: We need some kind of error tracking mechanism here, like clang's
+    // PGOStats tracker.
+    LoadedCounts = SGM.PGOReader->getInstrProfRecord(PGOFuncName, FunctionHash);
+  }
 
   if (EmitCoverageMapping) {
     CoverageMapping Coverage(SM);
@@ -776,7 +798,7 @@ void SILGenProfiling::emitCounterIncrement(SILGenBuilder &Builder,ASTNode Node){
 }
 
 Optional<uint64_t> SILGenProfiling::loadExecutionCount(ASTNode Node) {
-  if (!LoadedCounts)
+  if (!Node || !LoadedCounts)
     return None;
 
   auto CounterIt = RegionCounterMap.find(Node);
@@ -786,3 +808,19 @@ Optional<uint64_t> SILGenProfiling::loadExecutionCount(ASTNode Node) {
   unsigned CounterIndexForFunc = CounterIt->second;
   return LoadedCounts->Counts[CounterIndexForFunc];
 }
+
+namespace swift {
+namespace ProfileCounter {
+
+Optional<uint64_t> subtract(Optional<uint64_t> L, Optional<uint64_t> R) {
+  if (!L || !R)
+    return L;
+
+  uint64_t LV = L.getValue();
+  uint64_t RV = R.getValue();
+  assert(LV >= RV && "Invalid counter subtraction");
+  return LV - RV;
+}
+
+} // end namespace ProfileCounter
+} // end namespace swift
