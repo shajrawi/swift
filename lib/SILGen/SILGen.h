@@ -23,6 +23,7 @@
 #include "swift/SIL/SILModule.h"
 #include "swift/SIL/TypeLowering.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ProfileData/InstrProfReader.h"
 #include <deque>
 
 namespace swift {
@@ -58,6 +59,9 @@ public:
   /// The profiler for instrumentation based profiling, or null if profiling is
   /// disabled.
   std::unique_ptr<SILGenProfiling> Profiler;
+
+  /// The indexed profile data to be used for PGO, or nullptr.
+  std::unique_ptr<llvm::IndexedInstrProfReader> PGOReader;
 
   /// Mapping from SILDeclRefs to emitted SILFunctions.
   llvm::DenseMap<SILDeclRef, SILFunction*> emittedFunctions;

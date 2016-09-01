@@ -79,6 +79,8 @@ ERROR(func_decl_without_brace,PointsToFirstBadToken,
 NOTE(convert_let_to_var,none,
      "change 'let' to 'var' to make it mutable", ())
 
+NOTE(profile_read_error,none,
+     "failed to load profile data '%0': '%1'", (StringRef, StringRef))
 
 #ifndef DIAG_NO_UNDEF
 # if defined(DIAG)

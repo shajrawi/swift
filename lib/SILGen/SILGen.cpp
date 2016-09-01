@@ -27,6 +27,7 @@
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/SILDebugScope.h"
 #include "swift/Subsystems.h"
+#include "llvm/ProfileData/InstrProfReader.h"
 #include "llvm/Support/Debug.h"
 #include "RValue.h"
 using namespace swift;
@@ -37,8 +38,18 @@ using namespace Lowering;
 //===----------------------------------------------------------------------===//
 
 SILGenModule::SILGenModule(SILModule &M, Module *SM, bool makeModuleFragile)
-  : M(M), Types(M.Types), SwiftModule(SM), TopLevelSGF(nullptr),
-    Profiler(nullptr), makeModuleFragile(makeModuleFragile) {
+    : M(M), Types(M.Types), SwiftModule(SM), TopLevelSGF(nullptr),
+      Profiler(nullptr), makeModuleFragile(makeModuleFragile) {
+  SILOptions &Opts = M.getOptions();
+  if (!Opts.UseProfile.empty()) {
+    auto ReaderOrErr = llvm::IndexedInstrProfReader::create(Opts.UseProfile);
+    if (auto E = ReaderOrErr.getError()) {
+      diagnose(SourceLoc(), diag::profile_read_error, Opts.UseProfile,
+               E.message());
+      Opts.UseProfile.erase();
+    }
+    PGOReader = std::move(ReaderOrErr.get());
+  }
 }
 
 SILGenModule::~SILGenModule() {
