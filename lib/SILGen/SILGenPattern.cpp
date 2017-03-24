@@ -1385,7 +1385,7 @@ emitTupleDispatch(ArrayRef<RowToSpecialize> rows, ConsumableManagedValue src,
     auto &fieldTL = SGF.getTypeLowering(fieldTy);
 
     SILValue member;
-    if (tupleSILTy.isAddress()) {
+    if (tupleSILTy.isAddress() && SGF.silConv.useLoweredAddresses()) {
       member = SGF.B.createTupleElementAddr(loc, v, i, fieldTy);
       if (!fieldTL.isAddressOnly())
         member =
@@ -1648,7 +1648,8 @@ emitEnumElementDispatch(ArrayRef<RowToSpecialize> rows,
   assert(caseBBs.size() == caseInfos.size());
 
   // Emit the switch_enum{_addr} instruction.
-  bool addressOnlyEnum = src.getType().isAddress();
+  bool addressOnlyEnum =
+      src.getType().isAddress() && SGF.silConv.useLoweredAddresses();
 
   // We lack a SIL instruction to nondestructively project data from an
   // address-only enum, so we can only do so in place if we're allowed to take

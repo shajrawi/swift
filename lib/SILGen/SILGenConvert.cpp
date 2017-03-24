@@ -279,8 +279,8 @@ ManagedValue SILGenFunction::emitUncheckedGetOptionalValueFrom(SILLocation loc,
     payloadVal =
       B.createUncheckedTakeEnumDataAddr(loc, addrOrValue.forward(*this),
                                         someDecl, origPayloadTy);
-  
-    if (optTL.isLoadable())
+
+    if (optTL.isLoadable() || !silConv.useLoweredAddresses())
       payloadVal =
           optTL.emitLoad(B, loc, payloadVal, LoadOwnershipQualifier::Take);
   }
@@ -388,8 +388,11 @@ SILGenFunction::emitPointerToPointer(SILLocation loc,
   auto origBuf = emitTemporaryAllocation(loc, input.getType());
   B.emitStoreValueOperation(loc, input.forward(*this), origBuf,
                             StoreOwnershipQualifier::Init);
-  auto origValue = emitManagedBufferWithCleanup(origBuf);
-  
+  ManagedValue origValue = emitManagedBufferWithCleanup(origBuf);
+  if (!silConv.useLoweredAddresses()) {
+    origValue = emitManagedLoadCopy(loc, origValue.getValue());
+  }
+
   // Invoke the conversion intrinsic to convert to the destination type.
   auto *M = SGM.M.getSwiftModule();
   auto *proto = getPointerProtocol();

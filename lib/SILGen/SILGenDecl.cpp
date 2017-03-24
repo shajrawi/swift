@@ -112,7 +112,8 @@ void TupleInitialization::copyOrInitValueInto(SILGenFunction &SGF,
           SILType fieldType) -> ManagedValue {
         ManagedValue elt =
             SGF.B.createTupleElementAddr(loc, value, i, fieldType);
-        if (!fieldType.isAddressOnly(SGF.F.getModule())) {
+        if (!fieldType.isAddressOnly(SGF.F.getModule()) ||
+            !SGF.silConv.useLoweredAddresses()) {
           return SGF.B.createLoadTake(loc, elt);
         }
 
@@ -789,8 +790,8 @@ emitEnumMatch(ManagedValue value, EnumElementDecl *ElementDecl,
     // bother projecting out the address-only element value only to ignore it.
     return;
   }
-  
-  if (value.getType().isAddress()) {
+
+  if (value.getType().isAddress() && SGF.silConv.useLoweredAddresses()) {
     // If the enum is address-only, take from the enum we have and load it if
     // the element value is loadable.
     assert((eltTL.isTrivial() || value.hasCleanup())

@@ -63,7 +63,8 @@ ManagedValue SILGenFunction::emitManagedRetain(SILLocation loc,
   if (v->getType().isObject() &&
       v.getOwnershipKind() == ValueOwnershipKind::Trivial)
     return ManagedValue::forUnmanaged(v);
-  assert(!lowering.isAddressOnly() && "cannot retain an unloadable type");
+  assert((!lowering.isAddressOnly() || !silConv.useLoweredAddresses()) &&
+         "cannot retain an unloadable type");
 
   v = lowering.emitCopyValue(B, loc, v);
   return emitManagedRValueWithCleanup(v, lowering);
@@ -3215,7 +3216,7 @@ RValue RValueEmitter::visitBindOptionalExpr(BindOptionalExpr *E, SGFContext C) {
   auto &optTL = SGF.getTypeLowering(E->getSubExpr()->getType());
   
   ManagedValue optValue;
-  if (optTL.isLoadable()) {
+  if (optTL.isLoadable() || !SGF.silConv.useLoweredAddresses()) {
     optValue = SGF.emitRValueAsSingleValue(E->getSubExpr());
   } else {
     auto temp = SGF.emitTemporary(E, optTL);

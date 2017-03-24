@@ -125,7 +125,7 @@ public:
       // RValue has an invariant that loadable values have been
       // loaded.  Except it's not really an invariant, because
       // argument emission likes to lie sometimes.
-      if (eltTI.isLoadable()) {
+      if (eltTI.isLoadable() || !SGF.silConv.useLoweredAddresses()) {
         elt = eltTI.emitLoad(SGF.B, loc, elt, LoadOwnershipQualifier::Take);
       }
 

@@ -486,7 +486,8 @@ public:
   }
 
   LoadBorrowInst *createLoadBorrow(SILLocation Loc, SILValue LV) {
-    assert(LV->getType().isLoadable(F.getModule()));
+    assert(LV->getType().isLoadable(F.getModule()) ||
+           !SILModuleConventions(F.getModule()).useLoweredAddresses());
     return insert(new (F.getModule())
                       LoadBorrowInst(getSILDebugLocation(Loc), LV));
   }

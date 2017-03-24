@@ -405,7 +405,7 @@ ManagedValue Transform::transform(ManagedValue v,
     if (SGF.SGM.Types.checkForABIDifferences(v.getType(), loweredResultTy)
           == TypeConverter::ABIDifference::Trivial) {
       SILValue result = v.getValue();
-      if (v.getType().isAddress())
+      if (v.getType().isAddress() && SGF.silConv.useLoweredAddresses())
         result = SGF.B.createUncheckedAddrCast(Loc, result, loweredResultTy);
       else
         result = SGF.B.createUncheckedBitCast(Loc, result, loweredResultTy);
@@ -610,7 +610,7 @@ static void explodeTuple(SILGenFunction &gen,
     auto &eltTL = gen.getTypeLowering(eltType);
 
     ManagedValue elt;
-    if (tupleSILType.isAddress()) {
+    if (tupleSILType.isAddress() && gen.silConv.useLoweredAddresses()) {
       auto addr = gen.B.createTupleElementAddr(loc, tuple, index, eltType);
       elt = gen.emitManagedBufferWithCleanup(addr, eltTL);
     } else {
