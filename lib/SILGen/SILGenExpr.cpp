@@ -3804,6 +3804,10 @@ RValue RValueEmitter::visitProtocolMetatypeToObjectExpr(
 RValue RValueEmitter::visitIfExpr(IfExpr *E, SGFContext C) {
   auto &lowering = SGF.getTypeLowering(E->getType());
 
+  auto NumTrueTaken = SGF.loadProfilerCount(E->getThenExpr());
+  auto NumFalseTaken = ProfileCounter::subtract(
+      SGF.loadProfilerCount(E->getElseExpr()), NumTrueTaken);
+
   if (lowering.isLoadable() || !SGF.silConv.useLoweredAddresses()) {
     // If the result is loadable, emit each branch and forward its result
     // into the destination block argument.
@@ -3812,8 +3816,9 @@ RValue RValueEmitter::visitIfExpr(IfExpr *E, SGFContext C) {
     Condition cond = SGF.emitCondition(E->getCondExpr(),
                                        /*hasFalse*/ true,
                                        /*invertCondition*/ false,
-                                       SGF.getLoweredType(E->getType()));
-    
+                                       SGF.getLoweredType(E->getType()),
+                                       NumTrueTaken, NumFalseTaken);
+
     cond.enterTrue(SGF);
     SGF.emitProfilerIncrement(E->getThenExpr());
     SILValue trueValue;
@@ -3844,10 +3849,12 @@ RValue RValueEmitter::visitIfExpr(IfExpr *E, SGFContext C) {
     // that dominates both branches.
     SILValue resultAddr = SGF.getBufferForExprResult(
                                                E, lowering.getLoweredType(), C);
-    
-    Condition cond = SGF.emitCondition(E->getCondExpr(),
-                                       /*hasFalse*/ true,
-                                       /*invertCondition*/ false);
+
+    Condition cond =
+        SGF.emitCondition(E->getCondExpr(),
+                          /*hasFalse*/ true,
+                          /*invertCondition*/ false,
+                          /*contArgs*/ {}, NumTrueTaken, NumFalseTaken);
     cond.enterTrue(SGF);
     SGF.emitProfilerIncrement(E->getThenExpr());
     {

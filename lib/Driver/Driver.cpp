@@ -183,6 +183,18 @@ static void validateArgs(DiagnosticEngine &diags, const ArgList &Args) {
       diags.diagnose(SourceLoc(), diag::invalid_conditional_compilation_flag,
                      name);
   }
+
+  // Check for conflicting profiling flags
+  const Arg *ProfileGenerate = Args.getLastArg(options::OPT_profile_generate);
+  const Arg *ProfileUse = Args.getLastArg(options::OPT_profile_use);
+  if (ProfileGenerate && ProfileUse)
+    diags.diagnose(SourceLoc(), diag::error_conflicting_options,
+                   "-profile-generate", "-profile-use");
+
+  // Check if the profdata is missing
+  if (ProfileUse && !llvm::sys::fs::exists(ProfileUse->getValue()))
+    diags.diagnose(SourceLoc(), diag::error_profile_missing,
+                   ProfileUse->getValue());
 }
 
 /// Creates an appropriate ToolChain for a given driver and target triple.

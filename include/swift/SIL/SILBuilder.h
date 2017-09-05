@@ -1579,26 +1579,33 @@ public:
 
   CondBranchInst *createCondBranch(SILLocation Loc, SILValue Cond,
                                    SILBasicBlock *Target1,
-                                   SILBasicBlock *Target2) {
-    return insertTerminator(CondBranchInst::create(getSILDebugLocation(Loc),
-                                       Cond, Target1, Target2, getFunction()));
+                                   SILBasicBlock *Target2,
+                                   Optional<uint64_t> Target1Count = None,
+                                   Optional<uint64_t> Target2Count = None) {
+    return insertTerminator(
+        CondBranchInst::create(getSILDebugLocation(Loc), Cond, Target1, Target2,
+                               Target1Count, Target2Count, getFunction()));
   }
 
   CondBranchInst *createCondBranch(SILLocation Loc, SILValue Cond,
                                    SILBasicBlock *Target1,
                                    ArrayRef<SILValue> Args1,
                                    SILBasicBlock *Target2,
-                                   ArrayRef<SILValue> Args2) {
+                                   ArrayRef<SILValue> Args2,
+                                   Optional<uint64_t> Target1Count = None,
+                                   Optional<uint64_t> Target2Count = None) {
     return insertTerminator(CondBranchInst::create(
         getSILDebugLocation(Loc), Cond, Target1, Args1, Target2, Args2,
-                            getFunction()));
+        Target1Count, Target2Count, getFunction()));
   }
 
   CondBranchInst *createCondBranch(SILLocation Loc, SILValue Cond,
                                    SILBasicBlock *Target1,
                                    OperandValueArrayRef Args1,
                                    SILBasicBlock *Target2,
-                                   OperandValueArrayRef Args2) {
+                                   OperandValueArrayRef Args2,
+                                   Optional<uint64_t> Target1Count = None,
+                                   Optional<uint64_t> Target2Count = None) {
     SmallVector<SILValue, 6> ArgsCopy1;
     SmallVector<SILValue, 6> ArgsCopy2;
 
@@ -1610,10 +1617,9 @@ public:
     for (auto I = Args2.begin(), E = Args2.end(); I != E; ++I)
       ArgsCopy2.push_back(*I);
 
-    return insertTerminator(CondBranchInst::create(getSILDebugLocation(Loc),
-                                                   Cond, Target1, ArgsCopy1,
-                                                   Target2, ArgsCopy2,
-                                                   getFunction()));
+    return insertTerminator(CondBranchInst::create(
+        getSILDebugLocation(Loc), Cond, Target1, ArgsCopy1, Target2, ArgsCopy2,
+        Target1Count, Target2Count, getFunction()));
   }
 
   BranchInst *createBranch(SILLocation Loc, SILBasicBlock *TargetBlock) {

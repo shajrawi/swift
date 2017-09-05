@@ -1090,6 +1090,12 @@ public:
   void emitRuntimeRegistration();
   void emitVTableStubs();
   void emitTypeVerifier();
+
+  /// Create llvm metadata which encodes the branch weights given by
+  /// \p TrueCount and \p FalseCount.
+  llvm::MDNode *createProfileWeights(uint64_t TrueCount,
+                                     uint64_t FalseCount) const;
+
 private:
   void emitGlobalDecl(Decl *D);
 };

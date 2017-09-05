@@ -2117,11 +2117,12 @@ SILCloner<ImplClass>::visitCondBranchInst(CondBranchInst *Inst) {
   auto FalseArgs = getOpValueArray<8>(Inst->getFalseArgs());
   getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
   doPostProcess(Inst,
-    getBuilder().createCondBranch(getOpLocation(Inst->getLoc()),
-                                  getOpValue(Inst->getCondition()),
-                                  getOpBasicBlock(Inst->getTrueBB()), TrueArgs,
-                                  getOpBasicBlock(Inst->getFalseBB()),
-                                  FalseArgs));
+                getBuilder().createCondBranch(
+                    getOpLocation(Inst->getLoc()),
+                    getOpValue(Inst->getCondition()),
+                    getOpBasicBlock(Inst->getTrueBB()), TrueArgs,
+                    getOpBasicBlock(Inst->getFalseBB()), FalseArgs,
+                    Inst->getTrueBBCount(), Inst->getFalseBBCount()));
 }
 
 template<typename ImplClass>
