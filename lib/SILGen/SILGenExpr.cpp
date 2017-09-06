@@ -3805,8 +3805,7 @@ RValue RValueEmitter::visitIfExpr(IfExpr *E, SGFContext C) {
   auto &lowering = SGF.getTypeLowering(E->getType());
 
   auto NumTrueTaken = SGF.loadProfilerCount(E->getThenExpr());
-  auto NumFalseTaken = ProfileCounter::subtract(
-      SGF.loadProfilerCount(E->getElseExpr()), NumTrueTaken);
+  auto NumFalseTaken = SGF.loadProfilerCount(E->getElseExpr());
 
   if (lowering.isLoadable() || !SGF.silConv.useLoweredAddresses()) {
     // If the result is loadable, emit each branch and forward its result

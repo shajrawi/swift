@@ -483,8 +483,7 @@ void StmtEmitter::visitIfStmt(IfStmt *S) {
     LexicalScope trueScope(SGF, S);
 
     auto NumTrueTaken = SGF.loadProfilerCount(S->getThenStmt());
-    auto NumFalseTaken = ProfileCounter::subtract(
-        SGF.loadProfilerCount(S->getElseStmt()), NumTrueTaken);
+    auto NumFalseTaken = SGF.loadProfilerCount(S->getElseStmt());
 
     SGF.emitStmtCondition(S->getCond(), falseDest, S, NumTrueTaken,
                           NumFalseTaken);
@@ -549,7 +548,7 @@ void StmtEmitter::visitGuardStmt(GuardStmt *S) {
   // Emit the condition bindings, branching to the bodyBB if they fail.  Since
   // we didn't push a scope, the bound variables are live after this statement.
   auto NumFalseTaken = SGF.loadProfilerCount(S->getBody());
-  auto NumNonTaken = ProfileCounter::subtract(SGF.loadProfilerCount(S), NumFalseTaken);
+  auto NumNonTaken = SGF.loadProfilerCount(S);
   SGF.emitStmtCondition(S->getCond(), bodyBB, S, NumNonTaken, NumFalseTaken);
 }
 
