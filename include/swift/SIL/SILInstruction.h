@@ -4251,14 +4251,18 @@ protected:
   SelectEnumInstBase(
       ValueKind Kind, SILDebugLocation DebugLoc, SILValue Enum, SILType Type,
       SILValue DefaultValue,
-      ArrayRef<std::pair<EnumElementDecl *, SILValue>> CaseValues);
+      ArrayRef<std::pair<EnumElementDecl *, SILValue>> CaseValues,
+      Optional<ArrayRef<Optional<uint64_t>>> CaseCounts,
+      Optional<uint64_t> DefaultCount);
 
   template <typename SELECT_ENUM_INST>
   static SELECT_ENUM_INST *
   createSelectEnum(SILDebugLocation DebugLoc, SILValue Enum, SILType Type,
                    SILValue DefaultValue,
                    ArrayRef<std::pair<EnumElementDecl *, SILValue>> CaseValues,
-                   SILFunction &F);
+                   SILFunction &F,
+                   Optional<ArrayRef<Optional<uint64_t>>> CaseCounts,
+                   Optional<uint64_t> DefaultCount);
 
 public:
   SILValue getEnumOperand() const { return getOperand(); }
@@ -4307,15 +4311,19 @@ private:
 
   SelectEnumInst(SILDebugLocation DebugLoc, SILValue Operand, SILType Type,
                  SILValue DefaultValue,
-                 ArrayRef<std::pair<EnumElementDecl *, SILValue>> CaseValues)
+                 ArrayRef<std::pair<EnumElementDecl *, SILValue>> CaseValues,
+                 Optional<ArrayRef<Optional<uint64_t>>> CaseCounts,
+                 Optional<uint64_t> DefaultCount)
       : SelectEnumInstBase(ValueKind::SelectEnumInst, DebugLoc, Operand, Type,
-                           DefaultValue, CaseValues) {}
+                           DefaultValue, CaseValues, CaseCounts, DefaultCount) {
+  }
 
   static SelectEnumInst *
   create(SILDebugLocation DebugLoc, SILValue Operand, SILType Type,
          SILValue DefaultValue,
          ArrayRef<std::pair<EnumElementDecl *, SILValue>> CaseValues,
-         SILFunction &F);
+         SILFunction &F, Optional<ArrayRef<Optional<uint64_t>>> CaseCounts,
+         Optional<uint64_t> DefaultCount);
 
 public:
   static bool classof(const ValueBase *V) {
@@ -4331,15 +4339,19 @@ class SelectEnumAddrInst : public SelectEnumInstBase {
   SelectEnumAddrInst(
       SILDebugLocation DebugLoc, SILValue Operand, SILType Type,
       SILValue DefaultValue,
-      ArrayRef<std::pair<EnumElementDecl *, SILValue>> CaseValues)
+      ArrayRef<std::pair<EnumElementDecl *, SILValue>> CaseValues,
+      Optional<ArrayRef<Optional<uint64_t>>> CaseCounts,
+      Optional<uint64_t> DefaultCount)
       : SelectEnumInstBase(ValueKind::SelectEnumAddrInst, DebugLoc, Operand,
-                           Type, DefaultValue, CaseValues) {}
+                           Type, DefaultValue, CaseValues, CaseCounts,
+                           DefaultCount) {}
 
   static SelectEnumAddrInst *
   create(SILDebugLocation DebugLoc, SILValue Operand, SILType Type,
          SILValue DefaultValue,
          ArrayRef<std::pair<EnumElementDecl *, SILValue>> CaseValues,
-         SILFunction &F);
+         SILFunction &F, Optional<ArrayRef<Optional<uint64_t>>> CaseCounts,
+         Optional<uint64_t> DefaultCount);
 
 public:
   static bool classof(const ValueBase *V) {
@@ -6025,13 +6037,16 @@ protected:
   SwitchEnumInstBase(
       ValueKind Kind, SILDebugLocation DebugLoc, SILValue Operand,
       SILBasicBlock *DefaultBB,
-      ArrayRef<std::pair<EnumElementDecl *, SILBasicBlock *>> CaseBBs);
+      ArrayRef<std::pair<EnumElementDecl *, SILBasicBlock *>> CaseBBs,
+      Optional<ArrayRef<Optional<uint64_t>>> Counts,
+      Optional<uint64_t> DefaultCount);
 
   template <typename SWITCH_ENUM_INST>
   static SWITCH_ENUM_INST *createSwitchEnum(
       SILDebugLocation DebugLoc, SILValue Operand, SILBasicBlock *DefaultBB,
       ArrayRef<std::pair<EnumElementDecl *, SILBasicBlock *>> CaseBBs,
-      SILFunction &F);
+      SILFunction &F, Optional<ArrayRef<Optional<uint64_t>>> Counts,
+      Optional<uint64_t> DefaultCount);
 
 public:
   /// Clean up tail-allocated successor records for the switch cases.
@@ -6052,6 +6067,10 @@ public:
   getCase(unsigned i) const {
     assert(i < NumCases && "case out of bounds");
     return {getCaseBuf()[i], getSuccessorBuf()[i].getBB()};
+  }
+  Optional<uint64_t> getCaseCount(unsigned i) const {
+    assert(i < NumCases && "case out of bounds");
+    return getSuccessorBuf()[i].getCount();
   }
 
   // Swap the cases at indices \p i and \p j.
@@ -6081,6 +6100,10 @@ public:
     assert(HasDefault && "doesn't have a default");
     return getSuccessorBuf()[NumCases];
   }
+  Optional<uint64_t> getDefaultCount() const {
+    assert(HasDefault && "doesn't have a default");
+    return getSuccessorBuf()[NumCases].getCount();
+  }
 
   static bool classof(const ValueBase *V) {
     return V->getKind() >= ValueKind::SwitchEnumInst &&
@@ -6098,14 +6121,17 @@ private:
 
   SwitchEnumInst(
       SILDebugLocation DebugLoc, SILValue Operand, SILBasicBlock *DefaultBB,
-      ArrayRef<std::pair<EnumElementDecl *, SILBasicBlock *>> CaseBBs)
+      ArrayRef<std::pair<EnumElementDecl *, SILBasicBlock *>> CaseBBs,
+      Optional<ArrayRef<Optional<uint64_t>>> CaseCounts,
+      Optional<uint64_t> DefaultCount)
       : SwitchEnumInstBase(ValueKind::SwitchEnumInst, DebugLoc, Operand,
-                           DefaultBB, CaseBBs) {}
+                           DefaultBB, CaseBBs, CaseCounts, DefaultCount) {}
 
   static SwitchEnumInst *
   create(SILDebugLocation DebugLoc, SILValue Operand, SILBasicBlock *DefaultBB,
          ArrayRef<std::pair<EnumElementDecl *, SILBasicBlock *>> CaseBBs,
-         SILFunction &F);
+         SILFunction &F, Optional<ArrayRef<Optional<uint64_t>>> CaseCounts,
+         Optional<uint64_t> DefaultCount);
 
 public:
   static bool classof(const ValueBase *V) {
@@ -6122,14 +6148,17 @@ private:
 
   SwitchEnumAddrInst(
       SILDebugLocation DebugLoc, SILValue Operand, SILBasicBlock *DefaultBB,
-      ArrayRef<std::pair<EnumElementDecl *, SILBasicBlock *>> CaseBBs)
+      ArrayRef<std::pair<EnumElementDecl *, SILBasicBlock *>> CaseBBs,
+      Optional<ArrayRef<Optional<uint64_t>>> CaseCounts,
+      Optional<uint64_t> DefaultCount)
       : SwitchEnumInstBase(ValueKind::SwitchEnumAddrInst, DebugLoc, Operand,
-                           DefaultBB, CaseBBs) {}
+                           DefaultBB, CaseBBs, CaseCounts, DefaultCount) {}
 
   static SwitchEnumAddrInst *
   create(SILDebugLocation DebugLoc, SILValue Operand, SILBasicBlock *DefaultBB,
          ArrayRef<std::pair<EnumElementDecl *, SILBasicBlock *>> CaseBBs,
-         SILFunction &F);
+         SILFunction &F, Optional<ArrayRef<Optional<uint64_t>>> CaseCounts,
+         Optional<uint64_t> DefaultCount);
 
 public:
   static bool classof(const ValueBase *V) {
