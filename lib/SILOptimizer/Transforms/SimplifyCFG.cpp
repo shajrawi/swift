@@ -1456,7 +1456,8 @@ bool SimplifyCFG::simplifyCondBrBlock(CondBranchInst *BI) {
           Builder.createCondBranch(
               BI->getLoc(),
               invertExpectAndApplyTo(Builder, BI->getCondition(), Cond),
-              FalseSide, FalseArgs, TrueSide, TrueArgs);
+              FalseSide, FalseArgs, TrueSide, TrueArgs, BI->getFalseBBCount(),
+              BI->getTrueBBCount());
           BI->eraseFromParent();
           addToWorklist(ThisBB);
           return true;
@@ -1471,10 +1472,9 @@ bool SimplifyCFG::simplifyCondBrBlock(CondBranchInst *BI) {
   if (TrueTrampolineDest && TrueTrampolineDest != FalseSide) {
     DEBUG(llvm::dbgs() << "true-trampoline from bb" << ThisBB->getDebugID() <<
           " to bb" << TrueTrampolineDest->getDebugID() << '\n');
-    SILBuilderWithScope(BI)
-      .createCondBranch(BI->getLoc(), BI->getCondition(),
-                        TrueTrampolineDest, TrueArgs,
-                        FalseSide, FalseArgs);
+    SILBuilderWithScope(BI).createCondBranch(
+        BI->getLoc(), BI->getCondition(), TrueTrampolineDest, TrueArgs,
+        FalseSide, FalseArgs, BI->getTrueBBCount(), BI->getFalseBBCount());
     BI->eraseFromParent();
 
     if (LoopHeaders.count(TrueSide))
@@ -1488,10 +1488,10 @@ bool SimplifyCFG::simplifyCondBrBlock(CondBranchInst *BI) {
   if (FalseTrampolineDest && FalseTrampolineDest != TrueSide) {
     DEBUG(llvm::dbgs() << "false-trampoline from bb" << ThisBB->getDebugID() <<
           " to bb" << FalseTrampolineDest->getDebugID() << '\n');
-    SILBuilderWithScope(BI)
-      .createCondBranch(BI->getLoc(), BI->getCondition(),
-                        TrueSide, TrueArgs,
-                        FalseTrampolineDest, FalseArgs);
+    SILBuilderWithScope(BI).createCondBranch(
+        BI->getLoc(), BI->getCondition(), TrueSide, TrueArgs,
+        FalseTrampolineDest, FalseArgs, BI->getTrueBBCount(),
+        BI->getFalseBBCount());
     BI->eraseFromParent();
     if (LoopHeaders.count(FalseSide))
       LoopHeaders.insert(ThisBB);
@@ -1520,9 +1520,9 @@ bool SimplifyCFG::simplifyCondBrBlock(CondBranchInst *BI) {
     DEBUG(llvm::dbgs() << "true-trampoline from bb" << ThisBB->getDebugID() <<
           " to bb" << TrueTrampolineBr->getDestBB()->getDebugID() << '\n');
     SILBuilderWithScope(BI).createCondBranch(
-        BI->getLoc(), BI->getCondition(),
-        TrueTrampolineBr->getDestBB(), TrueTrampolineBr->getArgs(),
-        FalseSide, FalseArgs);
+        BI->getLoc(), BI->getCondition(), TrueTrampolineBr->getDestBB(),
+        TrueTrampolineBr->getArgs(), FalseSide, FalseArgs, BI->getTrueBBCount(),
+        BI->getFalseBBCount());
     BI->eraseFromParent();
 
     if (LoopHeaders.count(TrueSide))
@@ -1538,9 +1538,9 @@ bool SimplifyCFG::simplifyCondBrBlock(CondBranchInst *BI) {
     DEBUG(llvm::dbgs() << "false-trampoline from bb" << ThisBB->getDebugID() <<
           " to bb" << FalseTrampolineBr->getDestBB()->getDebugID() << '\n');
     SILBuilderWithScope(BI).createCondBranch(
-        BI->getLoc(), BI->getCondition(),
-        TrueSide, TrueArgs,
-        FalseTrampolineBr->getDestBB(), FalseTrampolineBr->getArgs());
+        BI->getLoc(), BI->getCondition(), TrueSide, TrueArgs,
+        FalseTrampolineBr->getDestBB(), FalseTrampolineBr->getArgs(),
+        BI->getTrueBBCount(), BI->getFalseBBCount());
     BI->eraseFromParent();
     if (LoopHeaders.count(FalseSide))
       LoopHeaders.insert(ThisBB);
@@ -2486,7 +2486,8 @@ static void removeArgumentFromTerminator(SILBasicBlock *BB, SILBasicBlock *Dest,
 
     Builder.createCondBranch(CBI->getLoc(), CBI->getCondition(),
                              CBI->getTrueBB(), TrueArgs, CBI->getFalseBB(),
-                             FalseArgs);
+                             FalseArgs, CBI->getTrueBBCount(),
+                             CBI->getFalseBBCount());
     Branch->eraseFromParent();
     return;
   }
@@ -2605,7 +2606,8 @@ void ArgumentSplitter::replaceIncomingArgs(
   }
 
   B.createCondBranch(CBI->getLoc(), CBI->getCondition(), CBI->getTrueBB(),
-                     NewTrueValues, CBI->getFalseBB(), NewFalseValues);
+                     NewTrueValues, CBI->getFalseBB(), NewFalseValues,
+                     CBI->getTrueBBCount(), CBI->getFalseBBCount());
 }
 
 bool ArgumentSplitter::createNewArguments() {
