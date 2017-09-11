@@ -2858,12 +2858,9 @@ static SILFunction *getOrCreateKeyPathGetter(SILGenFunction &SGF,
   // Find the function and see if we already created it.
   auto name = Mangle::ASTMangler()
     .mangleKeyPathGetterThunkHelper(property, genericSig, baseType);
-  auto thunk = SGF.SGM.M.getOrCreateSharedFunction(loc, name,
-                                                   signature,
-                                                   IsBare,
-                                                   IsNotTransparent,
-                                                   IsNotSerialized,
-                                                   IsThunk);
+  auto thunk = SGF.SGM.M.getOrCreateSharedFunction(
+      loc, name, signature, IsBare, IsNotTransparent, IsNotSerialized, None,
+      IsThunk);
   if (!thunk->empty())
     return thunk;
   
@@ -2959,12 +2956,9 @@ SILFunction *getOrCreateKeyPathSetter(SILGenFunction &SGF,
   auto name = Mangle::ASTMangler().mangleKeyPathSetterThunkHelper(property,
                                                                   genericSig,
                                                                   baseType);
-  auto thunk = SGF.SGM.M.getOrCreateSharedFunction(loc, name,
-                                                   signature,
-                                                   IsBare,
-                                                   IsNotTransparent,
-                                                   IsNotSerialized,
-                                                   IsThunk);
+  auto thunk = SGF.SGM.M.getOrCreateSharedFunction(
+      loc, name, signature, IsBare, IsNotTransparent, IsNotSerialized, None,
+      IsThunk);
   if (!thunk->empty())
     return thunk;
   
@@ -3804,8 +3798,8 @@ RValue RValueEmitter::visitProtocolMetatypeToObjectExpr(
 RValue RValueEmitter::visitIfExpr(IfExpr *E, SGFContext C) {
   auto &lowering = SGF.getTypeLowering(E->getType());
 
-  auto NumTrueTaken = SGF.loadProfilerCount(E->getThenExpr());
-  auto NumFalseTaken = SGF.loadProfilerCount(E->getElseExpr());
+  auto NumTrueTaken = SGF.SGM.loadProfilerCount(E->getThenExpr());
+  auto NumFalseTaken = SGF.SGM.loadProfilerCount(E->getElseExpr());
 
   if (lowering.isLoadable() || !SGF.silConv.useLoweredAddresses()) {
     // If the result is loadable, emit each branch and forward its result
