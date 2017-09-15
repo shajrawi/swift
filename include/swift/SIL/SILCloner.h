@@ -2161,12 +2161,13 @@ void SILCloner<ImplClass>::visitCheckedCastAddrBranchInst(
   CanType SrcType = getOpASTType(Inst->getSourceType());
   CanType TargetType = getOpASTType(Inst->getTargetType());
   getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
+  auto TrueCount = Inst->getTrueBBCount();
+  auto FalseCount = Inst->getFalseBBCount();
   doPostProcess(Inst,
-       getBuilder().createCheckedCastAddrBranch(getOpLocation(Inst->getLoc()),
-                                                Inst->getConsumptionKind(),
-                                                SrcValue, SrcType,
-                                                DestValue, TargetType,
-                                                OpSuccBB, OpFailBB));
+                getBuilder().createCheckedCastAddrBranch(
+                    getOpLocation(Inst->getLoc()), Inst->getConsumptionKind(),
+                    SrcValue, SrcType, DestValue, TargetType, OpSuccBB,
+                    OpFailBB, TrueCount, FalseCount));
 }
   
 template<typename ImplClass>
