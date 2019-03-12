@@ -1162,6 +1162,7 @@ namespace {
 class LoadableStorageAllocation {
 public:
   StructLoweringState &pass;
+  llvm::SmallVector<LoadInst *, 16> loadInstrs;
 
   explicit LoadableStorageAllocation(StructLoweringState &pass) : pass(pass) {}
 
@@ -1169,8 +1170,8 @@ public:
   void replaceLoad(LoadInst *unoptimizableLoad);
 
 protected:
-  void replaceLoadWithCopyAddr(LoadInst *optimizableLoad);
-  void replaceLoadWithCopyAddrForModifiable(LoadInst *unoptimizableLoad);
+  void replaceLoadWithUseOfOperand(LoadInst *optimizableLoad);
+  void replaceLoadWithUseOfOperandForModifiable(LoadInst *unoptimizableLoad);
   void convertIndirectFunctionArgs();
   void insertIndirectReturnArgs();
   void convertIndirectFunctionPointerArgsForUnmodifiable();
@@ -1180,6 +1181,7 @@ protected:
   AllocStackInst *allocateForApply(SILInstruction *apply, SILType type);
   SILArgument *replaceArgType(SILBuilder &argBuilder, SILArgument *arg,
                               SILType newSILType);
+  // Load instructions we are allowed to remove if not used
 };
 } // end anonymous namespace
 
@@ -1230,15 +1232,11 @@ static SILInstruction *createOutlinedCopyCall(SILBuilder &copyBuilder,
   return copy;
 }
 
-void LoadableStorageAllocation::replaceLoadWithCopyAddr(
+void LoadableStorageAllocation::replaceLoadWithUseOfOperand(
     LoadInst *optimizableLoad) {
   SILValue value = optimizableLoad->getOperand();
 
-  auto allocInstr = allocate(pass, value.getLoc(),
-                             value->getType().getObjectType());
-
   SILBuilderWithScope outlinedBuilder(optimizableLoad);
-  createOutlinedCopyCall(outlinedBuilder, value, allocInstr, pass);
 
   for (auto *user : optimizableLoad->getUses()) {
     SILInstruction *userIns = user->getUser();
@@ -1360,7 +1358,7 @@ void LoadableStorageAllocation::replaceLoadWithCopyAddr(
     }
   }
 
-  optimizableLoad->replaceAllUsesWith(allocInstr);
+  optimizableLoad->replaceAllUsesWith(value);
   optimizableLoad->getParent()->erase(optimizableLoad);
 }
 
@@ -1370,7 +1368,7 @@ static bool isYieldUseRewriteable(StructLoweringState &pass,
   return pass.isLargeLoadableType(operand->get()->getType());
 }
 
-void LoadableStorageAllocation::replaceLoadWithCopyAddrForModifiable(
+void LoadableStorageAllocation::replaceLoadWithUseOfOperandForModifiable(
     LoadInst *unoptimizableLoad) {
   SmallVector<Operand *, 8> usesToMod;
   for (auto *use : unoptimizableLoad->getUses()) {
@@ -1520,19 +1518,14 @@ void LoadableStorageAllocation::replaceLoadWithCopyAddrForModifiable(
     }
   }
   if (usesToMod.empty()) {
-    // No uses will benefit, do not create copy_addr
+    // No uses will benefit
     return;
   }
   SILValue value = unoptimizableLoad->getOperand();
 
-  AllocStackInst *alloc =
-      allocate(pass, value.getLoc(), value->getType().getObjectType());
-
-  SILBuilderWithScope outlinedBuilder(unoptimizableLoad);
-  createOutlinedCopyCall(outlinedBuilder, value, alloc, pass);
   while (!usesToMod.empty()) {
     auto *use = usesToMod.pop_back_val();
-    use->set(alloc);
+    use->set(value);
   }
 }
 
@@ -2010,9 +2003,10 @@ static bool allUsesAreReplaceable(StructLoweringState &pass,
 
 void LoadableStorageAllocation::replaceLoad(LoadInst *load) {
   if (allUsesAreReplaceable(pass, load)) {
-    replaceLoadWithCopyAddr(load);
+    replaceLoadWithUseOfOperand(load);
   } else {
-    replaceLoadWithCopyAddrForModifiable(load);
+    replaceLoadWithUseOfOperandForModifiable(load);
+    loadInstrs.push_back(load);
   }
 }
 
@@ -2731,9 +2725,6 @@ static void rewriteFunction(StructLoweringState &pass,
     auto newRetTuple = retBuilder.createTuple(regLoc, emptyTy, {});
     retBuilder.createReturn(newRetTuple->getLoc(), newRetTuple);
     instr->eraseFromParent();
-    if (opAsLoadInstr && opAsLoadInstr->use_empty()) {
-      opAsLoadInstr->eraseFromParent();
-    }
   }
 
   while (!pass.modYieldInsts.empty()) {
@@ -2844,6 +2835,14 @@ void LoadableByAddress::runOnFunction(SILFunction *F) {
   if (!pass.applyRetToAllocMap.empty()) {
     for (auto elm : pass.applyRetToAllocMap) {
       allApplyRetToAllocMap.insert(elm);
+    }
+  }
+
+  // Remove loads in allocator that are not used:
+  while (!allocator.loadInstrs.empty()) {
+    LoadInst *load = allocator.loadInstrs.pop_back_val();
+    if (load->use_empty()) {
+      load->eraseFromParent();
     }
   }
 }

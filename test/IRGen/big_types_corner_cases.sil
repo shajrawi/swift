@@ -260,8 +260,6 @@ sil @convertToThickHelper : $@convention(thin) (@owned BigStruct) -> ()
 
 // CHECK-LABAL: define {{.*}} swiftcc void @convertToThick(%T22big_types_corner_cases9BigStructV* noalias nocapture dereferenceable({{.*}}))
 // CHECK: entry:
-// CHECK:   [[ALLOC:%.*]] = alloca %T22big_types_corner_cases9BigStructV, align 4
-// CHECK:   call void @llvm.memcpy.p0i8.p0i8.i64
 // CHECK:   call swiftcc void bitcast (void (%T22big_types_corner_cases9BigStructV*)* @convertToThickHelper to void (%T22big_types_corner_cases9BigStructV*, %swift.refcounted*)*)(%T22big_types_corner_cases9BigStructV* noalias nocapture dereferenceable({{.*}}) [[ALLOC]], %swift.refcounted* swiftself null)
 // CHECK:   ret void
 // CHECK-LABEL: }

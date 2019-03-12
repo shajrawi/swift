@@ -139,9 +139,7 @@ public func enumCallee(_ x: LargeEnum) {
   }
 }
 // CHECK-LABEL-64: define{{( dllexport)?}}{{( protected)?}} swiftcc void @"$s22big_types_corner_cases10enumCalleeyAA9LargeEnumOF"(%T22big_types_corner_cases9LargeEnumO* noalias nocapture dereferenceable({{.*}})) #0 {
-// CHECK-64: alloca %T22big_types_corner_cases9LargeEnumO05InnerF0O
 // CHECK-64: alloca %T22big_types_corner_cases9LargeEnumO
-// CHECK-64: call void @llvm.memcpy.p0i8.p0i8.i64
 // CHECK-64: call void @llvm.memcpy.p0i8.p0i8.i64
 // CHECK-64: $ss5print_9separator10terminatoryypd_S2StF
 // CHECK-64: ret void
