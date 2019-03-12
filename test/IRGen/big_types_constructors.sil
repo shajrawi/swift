@@ -26,6 +26,12 @@ public enum LargeTupleEnum {
   case Full((BigStruct, Int32))
 }
 
+public enum LargeEnum {
+  case Empty1
+  case Empty2
+  case Full(BigStruct)
+}
+
 // CHECK-LABEL: sil @test_tuple : $@convention(thin) (@in_constant BigStruct) -> @out (BigStruct, Int32) {
 // CHECK: bb0(%0 : $*(BigStruct, Int32), %1 : $*BigStruct):
 // CHECK: [[ALLOCBIG:%.*]] = alloc_stack $(BigStruct, Int32)
@@ -201,4 +207,59 @@ bb1(%5 : $LargeTupleEnum):
 bb2(%9 : $Error):
   %10 = builtin "willThrow"(%9 : $Error) : $()
   throw %9 : $Error
+}
+
+// CHECK-LABEL: sil @test_enum : $@convention(thin) (@in_constant LargeEnum) -> @out LargeEnum {
+// CHECK: bb0(%0 : $*LargeEnum, %1 : $*LargeEnum):
+// CHECK: switch_enum_addr %{{.*}} : $*LargeEnum, case #LargeEnum.Empty1!enumelt: bb1, case #LargeEnum.Empty2!enumelt: bb2, case #LargeEnum.Full!enumelt.1: bb3
+// CHECK: bb3:
+// CHECK: unchecked_take_enum_data_addr %{{.*}} : $*LargeEnum, #LargeEnum.Full!enumelt.1
+// CHECK: [[ENUMDADDR:%.*]] = init_enum_data_addr %{{.*}} : $*LargeEnum, #LargeEnum.Full!enumelt.1
+// CHECK: copy_addr [take] %{{.*}} to [initialization] [[ENUMDADDR]] : $*BigStruct
+// CHECK: copy_addr [take] %{{.*}} to [initialization] %0 : $*LargeEnum
+// CHECK-LABEL: } // end sil function 'test_enum'
+sil @test_enum : $@convention(thin) (LargeEnum) -> LargeEnum {
+// %0                                             // users: %2, %1
+bb0(%0 : $LargeEnum):
+  debug_value %0 : $LargeEnum, let, name "x", argno 1 // id: %1
+  switch_enum %0 : $LargeEnum, case #LargeEnum.Empty1!enumelt: bb1, case #LargeEnum.Empty2!enumelt: bb2, case #LargeEnum.Full!enumelt.1: bb3 // id: %2
+
+bb1:                                              // Preds: bb0
+  unreachable                                     // id: %3
+
+bb2:                                              // Preds: bb0
+  unreachable                                     // id: %4
+
+// %5                                             // users: %8, %6
+bb3(%5 : $BigStruct):                             // Preds: bb0
+  debug_value %5 : $BigStruct, let, name "payload" // id: %6
+  %7 = metatype $@thin LargeEnum.Type
+  %8 = enum $LargeEnum, #LargeEnum.Full!enumelt.1, %5 : $BigStruct // user: %9
+  return %8 : $LargeEnum                          // id: %9
+} // end sil function 'test_enum'
+
+// CHECK-LABEL: sil @call_test_enum_full : $@convention(thin) () -> () {
+// CHECK: bb0:
+// CHECK: [[ALLOCBIG:%.*]] = alloc_stack $BigStruct
+// CHECK: [[FREFSTRUCT:%.*]] = function_ref @construct_big_struct : $@convention(method) (@thin BigStruct.Type) -> @out BigStruct
+// CHECK: apply [[FREFSTRUCT:%.*]]([[ALLOCBIG]], %{{.*}}) : $@convention(method) (@thin BigStruct.Type) -> @out BigStruct
+// CHECK: [[ENUMDADDR:%.*]] = init_enum_data_addr %{{.*}} : $*LargeEnum, #LargeEnum.Full!enumelt.1
+// CHECK: copy_addr [take] [[ALLOCBIG]] to [initialization] [[ENUMDADDR]] : $*BigStruct
+// CHECK: [[FREFENUM:%.*]] = function_ref @test_enum : $@convention(thin) (@in_constant LargeEnum) -> @out LargeEnum
+// CHECK: apply [[FREFENUM]]
+// CHECK-LABEL: } // end sil function 'call_test_enum_full'
+sil @call_test_enum_full : $@convention(thin) () -> () {
+bb0:
+  %0 = metatype $@thin LargeEnum.Type
+  %1 = metatype $@thin BigStruct.Type             // user: %3
+  // function_ref BigStruct.init()
+  %2 = function_ref @construct_big_struct : $@convention(method) (@thin BigStruct.Type) -> BigStruct
+  %3 = apply %2(%1) : $@convention(method) (@thin BigStruct.Type) -> BigStruct
+  %4 = enum $LargeEnum, #LargeEnum.Full!enumelt.1, %3 : $BigStruct // users: %7, %5
+  debug_value %4 : $LargeEnum, let, name "b"      // id: %5
+  // function_ref test_enum(_:)
+  %6 = function_ref @test_enum : $@convention(thin) (LargeEnum) -> LargeEnum // user: %7
+  %7 = apply %6(%4) : $@convention(thin) (LargeEnum) -> LargeEnum
+  %8 = tuple ()                                   // user: %9
+  return %8 : $()                                 // id: %9
 }

@@ -64,7 +64,15 @@ func generic2<T>(_ t: T) -> ((Big<T>, Big<T>), () -> Big<T>) {
 // CHECK: bb7:
 // CHECK: switch_enum_addr %{{.*}} : $*Optional<((Big<Int32>, Big<Int32>), @callee_guaranteed () -> @out Big<Int32>)>, case #Optional.some!enumelt.1: bb14, case #Optional.none!enumelt: bb8
 // CHECK: bb14:
-// CHECK: bb17(%222 : $Optional<((Big<Int>, Big<Int>), @callee_guaranteed () -> @out Big<Int>)>):
+// CHECK: bb15(%{{.*}} : $((Big<Int>, Big<Int>), @callee_guaranteed () -> @out Big<Int>)):
+// CHECK: [[INITEN:%.*]] = init_enum_data_addr %0 : $*Optional<((Big<Int>, Big<Int>), @callee_guaranteed () -> @out Big<Int>)>, #Optional.some!enumelt.1
+// CHECK: copy_addr [take] %{{.*}} to [initialization] [[INITEN]] : $*((Big<Int>, Big<Int>), @callee_guaranteed () -> @out Big<Int>)
+// CHECK: [[LOADEN:%.*]] = load %0 : $*Optional<((Big<Int>, Big<Int>), @callee_guaranteed () -> @out Big<Int>)> 
+// CHECK: br bb17([[LOADEN]] : $Optional<((Big<Int>, Big<Int>), @callee_guaranteed () -> @out Big<Int>)>)
+// CHECK: bb16:
+// CHECK: [[ENUMNONE:%.*]] = enum $Optional<((Big<Int>, Big<Int>), @callee_guaranteed () -> @out Big<Int>)>, #Optional.none!enumelt
+// CHECK: br bb17([[ENUMNONE]] : $Optional<((Big<Int>, Big<Int>), @callee_guaranteed () -> @out Big<Int>)>)
+// CHECK: bb17(%{{.*}} : $Optional<((Big<Int>, Big<Int>), @callee_guaranteed () -> @out Big<Int>)>):
 // CHECK: switch_enum_addr %{{.*}} : $*Optional<((Big<Int>, Big<Int>), @callee_guaranteed () -> @out Big<Int>)>, case #Optional.some!enumelt.1: bb24, case #Optional.none!enumelt: bb18
 // CHECK: bb24:
 // CHECK: return %{{.*}} : $()

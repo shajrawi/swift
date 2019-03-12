@@ -584,6 +584,8 @@ struct StructLoweringState {
   SmallVector<TupleInst *, 8> tupleConstructorsToMod;
   // All struct constructors that should be replaced copy_addr for all elements
   SmallVector<StructInst *, 8> structConstructorsToMod;
+  // All enum (data) constructors that should be replaced init_enum_data_addr
+  SmallVector<EnumInst *, 8> enumConstructorsToMod;
   // All tuple instructions for which the return type is a function type
   SmallVector<SingleValueInstruction *, 8> tupleInstsToMod;
   // All allock stack instructions to modify
@@ -670,6 +672,7 @@ protected:
   void visitDestroyValueInst(DestroyValueInst *instr);
   void visitStructConstructor(StructInst *instr);
   void visitTupleConstructor(TupleInst *instr);
+  void visitEnumConstructor(EnumInst *instr);
   void visitTupleInst(SingleValueInstruction *instr);
   void visitAllocStackInst(AllocStackInst *instr);
   void visitPointerToAddressInst(PointerToAddressInst *instr);
@@ -714,8 +717,7 @@ void LargeValueVisitor::mapValueStorage() {
       case SILInstructionKind::StructElementAddrInst:
       case SILInstructionKind::RefTailAddrInst:
       case SILInstructionKind::RefElementAddrInst:
-      case SILInstructionKind::BeginAccessInst:
-      case SILInstructionKind::EnumInst: {
+      case SILInstructionKind::BeginAccessInst: {
         // TODO Any more instructions to add here?
         visitResultTyInst(cast<SingleValueInstruction>(currIns));
         break;
@@ -758,6 +760,11 @@ void LargeValueVisitor::mapValueStorage() {
       case SILInstructionKind::StructInst: {
         auto *SI = cast<StructInst>(currIns);
         visitStructConstructor(SI);
+        break;
+      }
+      case SILInstructionKind::EnumInst: {
+        auto *EI = cast<EnumInst>(currIns);
+        visitEnumConstructor(EI);
         break;
       }
       case SILInstructionKind::TupleElementAddrInst:
@@ -1030,6 +1037,21 @@ void LargeValueVisitor::visitStructConstructor(StructInst *instr) {
   SILType newSILType = pass.getNewSILType(currSILType);
   if (currSILType != newSILType) {
     pass.structConstructorsToMod.push_back(instr);
+    return;
+  }
+  for (Operand &operand : instr->getAllOperands()) {
+    assert(std::find(pass.largeLoadableArgs.begin(),
+                     pass.largeLoadableArgs.end(),
+                     operand.get()) == pass.largeLoadableArgs.end() &&
+           "Did not expect a large type");
+  }
+}
+
+void LargeValueVisitor::visitEnumConstructor(EnumInst *instr) {
+  SILType currSILType = instr->getType().getObjectType();
+  SILType newSILType = pass.getNewSILType(currSILType);
+  if (currSILType != newSILType) {
+    pass.enumConstructorsToMod.push_back(instr);
     return;
   }
   for (Operand &operand : instr->getAllOperands()) {
@@ -1324,6 +1346,15 @@ void LoadableStorageAllocation::replaceLoadWithCopyAddr(
       }
       break;
     }
+    case SILInstructionKind::EnumInst: {
+      auto *instToInsert = cast<EnumInst>(userIns);
+      if (std::find(pass.enumConstructorsToMod.begin(),
+                    pass.enumConstructorsToMod.end(),
+                    instToInsert) == pass.enumConstructorsToMod.end()) {
+        pass.enumConstructorsToMod.push_back(instToInsert);
+      }
+      break;
+    }
     default:
       llvm_unreachable("Unexpected instruction");
     }
@@ -1470,6 +1501,16 @@ void LoadableStorageAllocation::replaceLoadWithCopyAddrForModifiable(
                     pass.structConstructorsToMod.end(),
                     instToInsert) == pass.structConstructorsToMod.end()) {
         pass.structConstructorsToMod.push_back(instToInsert);
+      }
+      usesToMod.push_back(use);
+      break;
+    }
+    case SILInstructionKind::EnumInst: {
+      auto *instToInsert = cast<EnumInst>(userIns);
+      if (std::find(pass.enumConstructorsToMod.begin(),
+                    pass.enumConstructorsToMod.end(),
+                    instToInsert) == pass.enumConstructorsToMod.end()) {
+        pass.enumConstructorsToMod.push_back(instToInsert);
       }
       usesToMod.push_back(use);
       break;
@@ -1958,6 +1999,7 @@ static bool allUsesAreReplaceable(StructLoweringState &pass,
     case SILInstructionKind::SwitchEnumInst:
     case SILInstructionKind::TupleInst:
     case SILInstructionKind::StructInst:
+    case SILInstructionKind::EnumInst:
       break;
     default:
       return false;
@@ -2251,6 +2293,51 @@ createStructConstructorAndLoad(LoadableStorageAllocation &allocator,
                                    pass);
 }
 
+static LoadInst *
+createEnumConstructorAndLoad(LoadableStorageAllocation &allocator,
+                             EnumInst *instr, StructLoweringState &pass) {
+  assert(instr->getElement()->hasAssociatedValues() &&
+         "case must have a data type");
+  assert(instr->hasOperand() && "case must have an operand");
+  SILLocation loc = instr->getLoc();
+  AllocStackInst *allocEnum = allocConstructor(instr, loc, pass);
+
+  // init the enum:
+  SILBuilderWithScope builder(instr);
+  SILValue elemVal = instr->getOperand();
+  SILType elemValType = elemVal->getType();
+  SILType newSILType = pass.getNewSILType(elemValType);
+  assert(newSILType.isAddress() && "Expected an address type");
+  auto *elemAddr = builder.createInitEnumDataAddr(
+      loc, allocEnum, instr->getElement(), newSILType);
+  SILValue castIfFunc = getOperandTypeWithCastIfNecessary(
+      instr, elemVal, pass.Mod, builder, pass.Mapper);
+  if (elemValType.isObject()) {
+    builder.createStore(loc, castIfFunc, elemAddr,
+                        getStoreInitOwnership(pass, elemValType));
+  } else {
+    createOutlinedCopyCall(builder, castIfFunc, elemAddr, pass);
+  }
+
+  // Load and replace the enum for the rest of the function:
+  return loadAndReplaceConstructor(allocEnum, allocator, builder, instr, pass);
+}
+
+static void recreateSmallEnum(swift::EnumInst *instr,
+                              StructLoweringState &pass) {
+  SILType currSILType = instr->getType().getObjectType();
+  SILType newSILType = pass.getNewSILType(currSILType);
+  // case does not have a data type, or a func, just re-create
+  SILBuilderWithScope resultTyBuilder(instr);
+  SILLocation Loc = instr->getLoc();
+  EnumInst *newInstr = nullptr;
+  SILValue operand = instr->hasOperand() ? instr->getOperand() : SILValue();
+  newInstr = resultTyBuilder.createEnum(Loc, operand, instr->getElement(),
+                                        newSILType.getObjectType());
+  instr->replaceAllUsesWith(newInstr);
+  instr->eraseFromParent();
+}
+
 static void rewriteFunction(StructLoweringState &pass,
                             LoadableStorageAllocation &allocator) {
 
@@ -2339,6 +2426,23 @@ static void rewriteFunction(StructLoweringState &pass,
       allocator.replaceLoad(load);
     }
 
+    while (!pass.enumConstructorsToMod.empty()) {
+      auto *instr = pass.enumConstructorsToMod.pop_back_val();
+      if (!instr->getElement()->hasAssociatedValues()) {
+        recreateSmallEnum(instr, pass);
+        continue;
+      }
+      SILValue elemVal = instr->getOperand();
+      SILType elemValType = elemVal->getType();
+      SILType newElemType = pass.getNewSILType(elemValType);
+      if (newElemType.isObject()) {
+        recreateSmallEnum(instr, pass);
+        continue;
+      }
+      auto *load = createEnumConstructorAndLoad(allocator, instr, pass);
+      allocator.replaceLoad(load);
+    }
+
     while (!pass.applies.empty()) {
       auto *applyInst = pass.applies.pop_back_val();
       if (currentModApplies.count(applyInst) == 0) {
@@ -2353,6 +2457,7 @@ static void rewriteFunction(StructLoweringState &pass,
              !pass.structExtractInstsToMod.empty() ||
              !pass.tupleConstructorsToMod.empty() ||
              !pass.structConstructorsToMod.empty() ||
+             !pass.enumConstructorsToMod.empty() ||
              !pass.uncheckedEnumDataInstsToMod.empty();
     assert(pass.applies.empty());
     pass.applies.append(currentModApplies.begin(), currentModApplies.end());
@@ -2530,14 +2635,6 @@ static void rewriteFunction(StructLoweringState &pass,
           Loc, convInstr->getOperand(), convInstr->getAccessKind(),
           convInstr->getEnforcement(), convInstr->hasNoNestedConflict(),
           convInstr->isFromBuiltin());
-      break;
-    }
-    case SILInstructionKind::EnumInst: {
-      auto *convInstr = cast<EnumInst>(instr);
-      SILValue operand =
-          convInstr->hasOperand() ? convInstr->getOperand() : SILValue();
-      newInstr = resultTyBuilder.createEnum(
-          Loc, operand, convInstr->getElement(), newSILType.getObjectType());
       break;
     }
     default:
